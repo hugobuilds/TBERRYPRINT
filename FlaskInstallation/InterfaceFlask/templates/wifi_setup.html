@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration Wi-Fi - Raspberry Pi</title>
+
+    <!-- CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        .wifi-networks {
+            margin-top: 1rem;
+        }
+        
+        .wifi-network {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .wifi-network:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .wifi-icon {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            width: 30px;
+            text-align: center;
+        }
+        
+        .wifi-info {
+            flex: 1;
+        }
+        
+        .wifi-name {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+        
+        .wifi-details {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .wifi-signal {
+            display: flex;
+            align-items: center;
+            margin-left: 1rem;
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
+        
+        .progress-bar {
+            height: 4px;
+            width: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-left: 0.5rem;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--primary);
+        }
+        
+        .current-connection {
+            background: rgba(46, 204, 113, 0.1);
+            border: 1px solid rgba(46, 204, 113, 0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        
+        .back-btn {
+            margin-bottom: 1rem;
+            display: inline-block;
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+        }
+        
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .network-error {
+            text-align: center;
+            padding: 2rem;
+            color: var(--danger);
+        }
+
+        .wifi-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .wifi-grid .card {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Configuration Wi-Fi</h1>
+            <p>Connectez votre Raspberry Pi à un réseau sans fil</p>
+        </div>
+        
+        <a href="/" class="back-btn">
+            <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+        </a>
+        
+        <div class="grid wifi-grid">
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fa-solid fa-signal"></i>
+                    <h2 class="card-title">État de la connexion Wi-Fi</h2>
+                </div>
+                
+                <div id="wifiStatus" class="card-content">
+                    {% if current_status.connected %}
+                    <div class="current-connection">
+                        <h3><i class="fas fa-check-circle" style="color: #2ecc71; margin-right: 0.75rem;"></i>Connecté</h3>
+                        <div class="stat">
+                            <span class="stat-label">Réseau:</span>
+                            <span class="stat-value">{{ current_status.ssid }}</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Adresse IP:</span>
+                            <span class="stat-value">{{ current_status.ip_address }}</span>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="stat">
+                        <i class="fa-solid fa-circle-xmark" style="color: #e74c3c; margin-right: 0.75rem;"></i>
+                        <span class="stat-value">Non connecté à un réseau Wi-Fi</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-wifi"></i>
+                    <h2 class="card-title">Réseaux disponibles</h2>
+                </div>
+
+                <button id="refreshBtn" class="btn btn-primary" title="Actualiser">
+                    <i class="fas fa-sync-alt"></i>
+                    Rafraîchir
+                </button>
+        
+                <div id="networksList" class="wifi-networks">
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modale pour le mot de passe Wi-Fi -->
+    <div id="wifiPasswordModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <i class="fas fa-key"></i>
+                <h3 class="modal-title">Connexion à <span id="selectedNetworkName"></span></h3>
+            </div>
+            <div class="modal-content">
+                <p>Entrez le mot de passe pour vous connecter à ce réseau</p>
+                <div style="margin-top: 1rem;">
+                    <input type="hidden" id="selectedSsid" value="">
+                    <input type="password" 
+                        id="networkPassword"
+                        name="password" 
+                        class="form-control" 
+                        style="width: 100%; 
+                                padding: 0.75rem;
+                                background: rgba(255, 255, 255, 0.1);
+                                border: 1px solid rgba(255, 255, 255, 0.2);
+                                border-radius: 0.5rem;
+                                color: var(--text);
+                                font-size: 1rem;"
+                        required
+                        placeholder="Mot de passe">
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button onclick="hideModal('wifiPasswordModal')" class="btn-modal btn-modal-cancel">
+                    Annuler
+                </button>
+                <button onclick="connectToNetwork()" class="btn-modal btn-modal-confirm" style="background: var(--primary);">
+                    Se connecter
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modale de confirmation de connexion -->
+    <div id="wifiConfirmationModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <i class="fas fa-check-circle" style="color: #2ecc71;"></i>
+                <h3 class="modal-title">Connexion réussie</h3>
+            </div>
+            <div class="modal-content">
+                <p>La configuration Wi-Fi a été appliquée avec succès.</p>
+            </div>
+            <div class="modal-actions">
+                <a href="/wifi_setup" class="btn-modal btn-modal-cancel">
+                    Fermer
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/wifi_setup.js') }}"></script>
+</body>
+</html>
